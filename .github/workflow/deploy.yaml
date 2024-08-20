@@ -3,7 +3,7 @@ name: Deploy to Viax
 on:
   push:
     branches:
-      - main  # Adjust the branch name as necessary
+      - dev
 
 jobs:
   deploy:
