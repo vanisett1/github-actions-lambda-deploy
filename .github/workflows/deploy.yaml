@@ -3,32 +3,31 @@ name: Deploy to Viax
 on:
   push:
     branches:
-      - dev
+      - dev  # Trigger on the 'dev' branch
+    paths:
+      - 'lambdas/**'  # Only trigger when there are changes in the lambdas directory
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      AUTH_REALM: wileyas
-      CLIENT_ID: viax-ui
-      ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-      API_URL: ${{ secrets.API_URL }}
-      AUTH_URL: ${{ secrets.AUTH_URL }}
-      VIAX_USERNAME: ${{ secrets.VIAX_USERNAME }}
-      VIAX_PASSWORD: ${{ secrets.VIAX_PASSWORD }}
+    strategy:
+      matrix:
+        lambda_path: ${{ fromJson(needs.find_path.outputs.lambdas) }}  # Dynamically determines the lambda path
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v2
-      with:
-        node-version: '14'  # Use the node version that matches your environment
-
+    - name: Find modified Lambda paths
+      id: find_path
+      run: |
+        echo "Finding modified Lambda paths..."
+        paths=$(git diff --name-only HEAD^ HEAD | grep '^lambdas/' | cut -d'/' -f 2 | sort -u | jq -R . | jq -s .)
+        echo "::set-output name=lambdas::$paths"
+        
     - name: Install dependencies
       run: |
-        cd ./lambdas/${{ secrets.LAMBDA_PATH }}
+        cd lambdas/${{ matrix.lambda_path }}
         npm install
         npm version $(jq -r '.version' package.json)-${{ secrets.ENVIRONMENT }}.${{ github.run_number }}
         npm run build
@@ -36,18 +35,19 @@ jobs:
 
     - name: Run tests
       run: |
-        cd ./lambdas/${{ secrets.LAMBDA_PATH }}
+        cd lambdas/${{ matrix.lambda_path }}
         npm run test
 
     - name: Zip the package
       run: |
-        cd ./lambdas/${{ secrets.LAMBDA_PATH }}
+        cd lambdas/${{ matrix.lambda_path }}
         rm -f fcn.zip
         npm install --production
         zip -r fcn.zip package.json viax.yaml src node_modules
 
     - name: Deploy to Viax
       run: |
+        cd lambdas/${{ matrix.lambda_path }}
         TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=$VIAX_USERNAME&password=$VIAX_PASSWORD" $AUTH_URL | jq -r '.access_token')
         curl --request POST \
           --url "$API_URL" \
@@ -60,15 +60,3 @@ jobs:
           }' \
           --form 'map={ "File":["variables.file"] }' \
           --form File=@./fcn.zip
-
-    # - name: Notify on failure
-    #   if: failure()
-    #   uses: dawidd6/action-send-mail@v3
-    #   with:
-    #     server_address: smtp.gmail.com
-    #     server_port: 465
-    #     username: ${{ secrets.EMAIL_USERNAME }}
-    #     password: ${{ secrets.EMAIL_PASSWORD }}
-    #     subject: "[GitHub Actions] ${{ github.job }} failed"
-    #     to: vchallapu@wiley.com,rkumar2@wiley.com,plavoie@wiley.com,dwessel@wiley.com,frsantana@wiley.com,jgauthier@wiley.com,vbhan@wiley.com,desingh@wiley.com,adevgan@wiley.com,vanisetti@wiley.com,vsundara@wiley.com
-    #     body: "The job ${{ github.job }} failed. Please check the logs for more details."
