@@ -10,7 +10,8 @@
   "scripts": {
     "test": "node test/unit.js && node test/integration.js",
     "start": "FUNC_LOG_LEVEL=info node --no-warnings --require './lib/tracing.js' ./node_modules/.bin/faas-js-runtime ./index.js",
-    "debug": "nodemon --inspect ./node_modules/faas-js-runtime/bin/cli.js ./index.js"
+    "debug": "nodemon --inspect ./node_modules/faas-js-runtime/bin/cli.js ./index.js",
+    "build": "npm run clean && npm run compile && npm run bundle"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
