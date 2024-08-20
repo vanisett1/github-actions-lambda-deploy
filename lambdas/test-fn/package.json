@@ -11,7 +11,9 @@
     "test": "node test/unit.js && node test/integration.js",
     "start": "FUNC_LOG_LEVEL=info node --no-warnings --require './lib/tracing.js' ./node_modules/.bin/faas-js-runtime ./index.js",
     "debug": "nodemon --inspect ./node_modules/faas-js-runtime/bin/cli.js ./index.js",
-    "build": "npm run clean && npm run compile && npm run bundle"
+    "build": "npm run clean && npm run compile && npm run bundle",
+    "clean": "rm -rf dist && mkdir dist", 
+    "bundle": "webpack --config webpack.config.js"    
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
