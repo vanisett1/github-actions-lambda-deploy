@@ -1,0 +1,74 @@
+name: Deploy to Viax
+
+on:
+  push:
+    branches:
+      - main  # Adjust the branch name as necessary
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AUTH_REALM: wileyas
+      CLIENT_ID: viax-ui
+      ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
+      API_URL: ${{ secrets.API_URL }}
+      AUTH_URL: ${{ secrets.AUTH_URL }}
+      VIAX_USERNAME: ${{ secrets.VIAX_USERNAME }}
+      VIAX_PASSWORD: ${{ secrets.VIAX_PASSWORD }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'  # Use the node version that matches your environment
+
+    - name: Install dependencies
+      run: |
+        cd ./lambdas/${{ secrets.LAMBDA_PATH }}
+        npm install
+        npm version $(jq -r '.version' package.json)-${{ secrets.ENVIRONMENT }}.${{ github.run_number }}
+        npm run build
+        cp viax.${{ secrets.ENVIRONMENT }}.yaml viax.yaml
+
+    - name: Run tests
+      run: |
+        cd ./lambdas/${{ secrets.LAMBDA_PATH }}
+        npm run test
+
+    - name: Zip the package
+      run: |
+        cd ./lambdas/${{ secrets.LAMBDA_PATH }}
+        rm -f fcn.zip
+        npm install --production
+        zip -r fcn.zip package.json viax.yaml src node_modules
+
+    - name: Deploy to Viax
+      run: |
+        TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=$VIAX_USERNAME&password=$VIAX_PASSWORD" $AUTH_URL | jq -r '.access_token')
+        curl --request POST \
+          --url "$API_URL" \
+          --header "Authorization: Bearer $TOKEN" \
+          --header 'Content-Type: multipart/form-data' \
+          --form 'operations={ 
+            "operationName": "upsertFunction",
+            "query": "mutation upsertFunction($file: Upload!) { upsertFunction(input: { fun: $file }) { uid } }",
+            "variables": { "file": null }
+          }' \
+          --form 'map={ "File":["variables.file"] }' \
+          --form File=@./fcn.zip
+
+    # - name: Notify on failure
+    #   if: failure()
+    #   uses: dawidd6/action-send-mail@v3
+    #   with:
+    #     server_address: smtp.gmail.com
+    #     server_port: 465
+    #     username: ${{ secrets.EMAIL_USERNAME }}
+    #     password: ${{ secrets.EMAIL_PASSWORD }}
+    #     subject: "[GitHub Actions] ${{ github.job }} failed"
+    #     to: vchallapu@wiley.com,rkumar2@wiley.com,plavoie@wiley.com,dwessel@wiley.com,frsantana@wiley.com,jgauthier@wiley.com,vbhan@wiley.com,desingh@wiley.com,adevgan@wiley.com,vanisetti@wiley.com,vsundara@wiley.com
+    #     body: "The job ${{ github.job }} failed. Please check the logs for more details."
