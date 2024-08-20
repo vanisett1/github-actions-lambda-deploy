@@ -10,19 +10,24 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        lambda_path: ${{ github.event.head_commit.modified }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Deploy only modified lambdas
-      if: contains(matrix.lambda_path, 'lambdas/')
+    - name: Find and deploy modified lambdas
       run: |
-        lambda_dir=$(echo ${{ matrix.lambda_path }} | grep -oP '^lambdas/[^/]+')
-        if [ -n "$lambda_dir" ]; then
-          cd $lambda_dir
+        # Find the directories within lambdas/ that have been modified
+        modified_lambdas=$(git diff --name-only ${{ github.sha }}~1 ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f 2 | sort -u)
+        
+        if [ -z "$modified_lambdas" ]; then
+          echo "No Lambda functions were modified."
+          exit 0
+        fi
+
+        for lambda in $modified_lambdas; do
+          echo "Deploying Lambda: $lambda"
+          cd lambdas/$lambda
+
           npm install
           npm version $(jq -r '.version' package.json)-${{ secrets.ENVIRONMENT }}.${{ github.run_number }}
           npm run build
@@ -48,13 +53,13 @@ jobs:
               --form File=@./fcn.zip)
               
             if [[ $response == *"uid"* ]]; then
-              echo "Successfully deployed Lambda function."
+              echo "Successfully deployed Lambda function $lambda."
               break
             else
-              echo "Failed to deploy Lambda function, retrying... ($i/3)"
+              echo "Failed to deploy Lambda function $lambda, retrying... ($i/3)"
               sleep 5
             fi
           done
-        else
-          echo "No relevant Lambda changes detected, skipping deployment."
-        fi
+
+          cd -  # Go back to the root directory for the next iteration
+        done
