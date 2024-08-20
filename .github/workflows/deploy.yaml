@@ -1,61 +1,68 @@
-name: Deploy Changed Lambdas
+name: Deploy Lambdas
 
 on:
   push:
     branches:
       - dev
     paths:
-      - 'lambdas/**'  # Trigger only when there are changes in the lambdas directory
+      - 'lambdas/**'  # Trigger on changes in the lambdas directory
 
 jobs:
-  find_changed_lambdas:
-    runs-on: ubuntu-latest
-    outputs:
-      lambdas: ${{ steps.set_output.outputs.lambdas }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 2  # Fetch the last two commits to ensure HEAD^ is valid
-
-      - name: Find modified Lambda paths
-        id: set_output
-        run: |
-          echo "Finding modified Lambda paths..."
-          # Get the list of changed directories in lambdas
-          changed_dirs=$(git diff --name-only HEAD^ HEAD lambdas/ | grep '/$' | cut -d'/' -f2 | sort -u | jq -R . | jq -s .)
-          echo "Changed lambdas: $changed_dirs"
-          echo "lambdas=$changed_dirs" >> $GITHUB_ENV  # Set output using environment files
-          echo "::set-output name=lambdas::$changed_dirs"  # Set output for the next job
-
-      - name: Debug Output
-        run: |
-          echo "Output from find_changed_lambdas: ${{ steps.set_output.outputs.lambdas }}"
-
   deploy:
     runs-on: ubuntu-latest
-    needs: find_changed_lambdas
-    if: steps.set_output.outputs.lambdas != '[]'  # Only run if there are changed lambdas
-    strategy:
-      matrix:
-        lambda_path: ${{ fromJson(steps.set_output.outputs.lambdas) }}  # Get the changed lambda paths
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+    - name: Checkout code with history
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 2  # Ensure we have enough history to compare changes
 
-      - name: Install dependencies
-        run: |
-          cd lambdas/${{ matrix.lambda_path }}
+    - name: Identify modified Lambda directories
+      id: find_lambdas
+      run: |
+        # Find the list of modified directories inside lambdas/
+        modified_lambdas=$(git diff --name-only HEAD~1 HEAD | grep '^lambdas/' | cut -d'/' -f 2 | sort -u)
+        
+        if [ -z "$modified_lambdas" ]; then
+          echo "No Lambda functions were modified."
+          exit 0
+        fi
+
+        echo "Modified Lambda functions: $modified_lambdas"
+        echo "::set-output name=modified_lambdas::$modified_lambdas"
+
+    - name: Deploy modified Lambdas
+      run: |
+        for lambda in ${{ steps.find_lambdas.outputs.modified_lambdas }}; do
+          echo "Deploying Lambda: $lambda"
+          cd lambdas/$lambda
+
           npm install
-
-      - name: Build Lambda
-        run: |
-          cd lambdas/${{ matrix.lambda_path }}
+          npm version $(jq -r '.version' package.json)-${{ github.run_number }}
           npm run build
+          cp viax.${{ secrets.ENVIRONMENT }}.yaml viax.yaml
+          npm run test
+          rm -f fcn.zip
+          npm install --production
+          zip -r fcn.zip package.json viax.yaml src node_modules
 
-      - name: Deploy Lambda
-        run: |
-          cd lambdas/${{ matrix.lambda_path }}
-          # Add your deployment command here
-          echo "Deploying Lambda from ${matrix.lambda_path}..."
+          # Deploy to Viax
+          TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=${{ secrets.VIAX_USERNAME }}&password=${{ secrets.VIAX_PASSWORD }}" ${{ secrets.AUTH_URL }} | jq -r '.access_token')
+          response=$(curl --request POST \
+            --url "${{ secrets.API_URL }}" \
+            --header "Authorization: Bearer $TOKEN" \
+            --header 'Content-Type: multipart/form-data' \
+            --form 'operations={ 
+              "operationName": "upsertFunction",
+              "query": "mutation upsertFunction($file: Upload!) { upsertFunction(input: { fun: $file }) { uid } }",
+              "variables": { "file": null }
+            }' \
+            --form 'map={ "File":["variables.file"] }' \
+            --form File=@./fcn.zip)
+
+          if [[ $response == *"uid"* ]]; then
+            echo "Successfully deployed Lambda function $lambda."
+          else
+            echo "Failed to deploy Lambda function $lambda."
+            exit 1
+          fi
+        done
