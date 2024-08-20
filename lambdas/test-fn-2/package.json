@@ -11,7 +11,7 @@
     "test": "node test/unit.js && node test/integration.js",
     "start": "FUNC_LOG_LEVEL=info node --no-warnings --require './lib/tracing.js' ./node_modules/.bin/faas-js-runtime ./index.js",
     "debug": "nodemon --inspect ./node_modules/faas-js-runtime/bin/cli.js ./index.js",
-    "build": "mkdir -p dist && cp -r src/* dist/"
+    "build": "echo 'Build step executed!'" 
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
