@@ -26,6 +26,7 @@ jobs:
           changed_dirs=$(git diff --name-only HEAD^ HEAD lambdas/ | grep '/$' | cut -d'/' -f2 | sort -u | jq -R . | jq -s .)
           echo "Changed lambdas: $changed_dirs"
           echo "lambdas=$changed_dirs" >> $GITHUB_ENV  # Set output using environment files
+          echo "::set-output name=lambdas::$changed_dirs"  # Set output for the next job
 
       - name: Debug Output
         run: |
@@ -34,10 +35,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: find_changed_lambdas
-    if: env.lambdas != '[]'  # Only run if there are changed lambdas
+    if: steps.set_output.outputs.lambdas != '[]'  # Only run if there are changed lambdas
     strategy:
       matrix:
-        lambda_path: ${{ fromJson(env.lambdas) }}  # Get the changed lambda paths
+        lambda_path: ${{ fromJson(steps.set_output.outputs.lambdas) }}  # Get the changed lambda paths
 
     steps:
       - name: Checkout code
