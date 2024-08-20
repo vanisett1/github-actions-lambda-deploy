@@ -3,35 +3,43 @@ name: Deploy to Viax
 on:
   push:
     branches:
-      - dev  # Trigger on the 'dev' branch
+      - dev
     paths:
-      - 'lambdas/**'  # Only trigger when there are changes in the lambdas directory
+      - 'lambdas/**'  # Trigger on changes in the lambdas directory
 
 jobs:
-  deploy:
+  find_lambdas:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        lambda_path: ${{ fromJson(needs.find_path.outputs.lambdas) }}  # Dynamically determines the lambda path
-
+    outputs:
+      lambdas: ${{ steps.set_lambdas.outputs.lambdas }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
 
     - name: Find modified Lambda paths
-      id: find_path
+      id: set_lambdas
       run: |
         echo "Finding modified Lambda paths..."
         paths=$(git diff --name-only HEAD^ HEAD | grep '^lambdas/' | cut -d'/' -f 2 | sort -u | jq -R . | jq -s .)
         echo "::set-output name=lambdas::$paths"
-        
+        echo "Found Lambda function paths: $paths"
+
+  deploy:
+    needs: find_lambdas
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lambda_path: ${{ fromJson(needs.find_lambdas.outputs.lambdas) }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
     - name: Install dependencies
       run: |
         cd lambdas/${{ matrix.lambda_path }}
         npm install
-        npm version $(jq -r '.version' package.json)-${{ secrets.ENVIRONMENT }}.${{ github.run_number }}
+        npm version $(jq -r '.version' package.json)-dev.${{ github.run_number }}
         npm run build
-        cp viax.${{ secrets.ENVIRONMENT }}.yaml viax.yaml
 
     - name: Run tests
       run: |
