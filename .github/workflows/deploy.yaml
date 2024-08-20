@@ -24,9 +24,9 @@ jobs:
     needs: filter_lambdas
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false  # Properly setting the fail-fast option
       matrix:
         lambda_path: ${{ fromJson(needs.filter_lambdas.outputs.lambdas_changed) }}
-        fail-fast: false
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
@@ -38,7 +38,7 @@ jobs:
       run: |
         cd lambdas/${{ matrix.lambda_path }}
         npm install
-        npm version $(jq -r '.version' package.json)-dev.${{ github.run_number }}
+        npm version $(jq -r '.version' package.json)-${{ secrets.ENVIRONMENT }}.${{ github.run_number }}
         npm run build
         cp viax.${{ secrets.ENVIRONMENT }}.yaml viax.yaml
         npm run test
