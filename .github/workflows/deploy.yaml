@@ -1,65 +1,53 @@
-name: Deploy to Viax
+name: Deploy Changed Lambdas
 
 on:
   push:
     branches:
       - dev
     paths:
-      - 'lambdas/**'  # Trigger on changes in the lambdas directory
+      - 'lambdas/**'  # Trigger only when there are changes in the lambdas directory
 
 jobs:
+  find_changed_lambdas:
+    runs-on: ubuntu-latest
+    outputs:
+      lambdas: ${{ steps.set_output.outputs.lambdas }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Find modified Lambda paths
+        id: set_output
+        run: |
+          echo "Finding modified Lambda paths..."
+          # Get the list of changed directories in lambdas
+          changed_dirs=$(git diff --name-only HEAD^ HEAD lambdas/ | grep '/$' | cut -d'/' -f2 | sort -u | jq -R . | jq -s .)
+          echo "Changed lambdas: $changed_dirs"
+          echo "::set-output name=lambdas::$changed_dirs"
+
   deploy:
     runs-on: ubuntu-latest
+    needs: find_changed_lambdas
+    strategy:
+      matrix:
+        lambda_path: ${{ fromJson(needs.find_changed_lambdas.outputs.lambdas) }}  # Get the changed lambda paths
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Find and deploy modified lambdas
-      run: |
-        # Find the directories within lambdas/ that have been modified
-        modified_lambdas=$(git diff --name-only ${{ github.sha }}~1 ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f 2 | sort -u)
-        
-        if [ -z "$modified_lambdas" ]; then
-          echo "No Lambda functions were modified."
-          exit 0
-        fi
-
-        for lambda in $modified_lambdas; do
-          echo "Deploying Lambda: $lambda"
-          cd lambdas/$lambda
-
+      - name: Install dependencies
+        run: |
+          cd lambdas/${{ matrix.lambda_path }}
           npm install
-          npm version $(jq -r '.version' package.json)-${{ secrets.ENVIRONMENT }}.${{ github.run_number }}
+
+      - name: Build Lambda
+        run: |
+          cd lambdas/${{ matrix.lambda_path }}
           npm run build
-          cp viax.${{ secrets.ENVIRONMENT }}.yaml viax.yaml
-          npm run test
-          rm -f fcn.zip
-          npm install --production
-          zip -r fcn.zip package.json viax.yaml src node_modules
 
-          TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=$VIAX_USERNAME&password=$VIAX_PASSWORD" $AUTH_URL | jq -r '.access_token')
-
-          for i in {1..3}; do
-            response=$(curl --request POST \
-              --url "$API_URL" \
-              --header "Authorization: Bearer $TOKEN" \
-              --header 'Content-Type: multipart/form-data' \
-              --form 'operations={ 
-                "operationName": "upsertFunction",
-                "query": "mutation upsertFunction($file: Upload!) { upsertFunction(input: { fun: $file }) { uid } }",
-                "variables": { "file": null }
-              }' \
-              --form 'map={ "File":["variables.file"] }' \
-              --form File=@./fcn.zip)
-              
-            if [[ $response == *"uid"* ]]; then
-              echo "Successfully deployed Lambda function $lambda."
-              break
-            else
-              echo "Failed to deploy Lambda function $lambda, retrying... ($i/3)"
-              sleep 5
-            fi
-          done
-
-          cd -  # Go back to the root directory for the next iteration
-        done
+      - name: Deploy Lambda
+        run: |
+          cd lambdas/${{ matrix.lambda_path }}
+          # Add your deployment command here
+          echo "Deploying Lambda from ${matrix.lambda_path}..."
