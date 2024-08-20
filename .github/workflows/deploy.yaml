@@ -11,6 +11,9 @@ jobs:
     outputs:
       lambdas_changed: ${{ steps.filter.outputs.lambdas }}
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v2  # Ensure the code is checked out
+
     - name: Filter changes in lambdas directory
       id: filter
       uses: dorny/paths-filter@v2
@@ -24,7 +27,7 @@ jobs:
     needs: filter_lambdas
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false  # Properly setting the fail-fast option
+      fail-fast: false
       matrix:
         lambda_path: ${{ fromJson(needs.filter_lambdas.outputs.lambdas_changed) }}
     concurrency:
