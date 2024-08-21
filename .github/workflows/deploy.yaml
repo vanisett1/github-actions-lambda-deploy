@@ -61,7 +61,7 @@ jobs:
           npm install
           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
           npm run build
-          cp viax.${GITHUB_REF_NAME}.yaml viax.yaml
+          cp fnc.${GITHUB_REF_NAME}.yaml fnc.yaml
           npm run test
           rm -f fcn.zip
           npm install --production
