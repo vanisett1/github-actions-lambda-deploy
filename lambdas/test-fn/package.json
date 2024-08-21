@@ -1,6 +1,6 @@
 {
   "name": "event-handler",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "description": "Node.js CloudEvent Handler",
   "license": "Apache-2.0",
   "repository": {
@@ -10,8 +10,7 @@
   "scripts": {
     "test": "node test/unit.js && node test/integration.js",
     "start": "FUNC_LOG_LEVEL=info node --no-warnings --require './lib/tracing.js' ./node_modules/.bin/faas-js-runtime ./index.js",
-    "debug": "nodemon --inspect ./node_modules/faas-js-runtime/bin/cli.js ./index.js",
-    "build": "echo 'Build step executed!'" 
+    "debug": "nodemon --inspect ./node_modules/faas-js-runtime/bin/cli.js ./index.js"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
