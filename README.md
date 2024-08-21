@@ -1,70 +1,76 @@
-# github-actions
+# Deploy Lambdas
 
-# name: Deploy Lambdas
+This GitHub Actions workflow automates the deployment of AWS Lambda functions whenever changes are made to the `lambdas` directory or when triggered manually. It allows for targeted deployments of specific lambdas or all lambdas at once.
 
-# on:
-#   push:
-#     branches:
-#       - dev
-#     paths:
-#       - 'lambdas/**'  # Trigger on changes in the lambdas directory
+## Workflow Overview
 
-# jobs:
-#   deploy:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Checkout code with history
-#       uses: actions/checkout@v2
-#       with:
-#         fetch-depth: 2  # Ensure we have enough history to compare changes
+- **Triggering Events**:
+  - Automatically on `push` events to the `dev` branch that affect files in the `lambdas` directory.
+  - Manually via the GitHub Actions interface with the option to specify a lambda name or deploy all lambdas.
 
-#     - name: Identify modified Lambda directories
-#       id: find_lambdas
-#       run: |
-#         # Find the list of modified directories inside lambdas/
-#         modified_lambdas=$(git diff --name-only HEAD~1 HEAD | grep '^lambdas/' | cut -d'/' -f 2 | sort -u)
-        
-#         if [ -z "$modified_lambdas" ]; then
-#           echo "No Lambda functions were modified."
-#           exit 0
-#         fi
+## Workflow Structure
 
-#         echo "Modified Lambda functions: $modified_lambdas"
-#         echo "::set-output name=modified_lambdas::$modified_lambdas"
+The workflow consists of the following jobs:
 
-#     - name: Deploy modified Lambdas
-#       run: |
-#         for lambda in ${{ steps.find_lambdas.outputs.modified_lambdas }}; do
-#           echo "Deploying Lambda: $lambda"
-#           cd lambdas/$lambda
+1. **detect-changes**:
+   - Detects which lambda functions have changed since the last commit or based on user input.
+   - Outputs a list of changed lambdas.
 
-#           npm install
-#           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
-#           npm run build
-#           cp viax.${GITHUB_REF_NAME}.yaml viax.yaml
-#           npm run test
-#           rm -f fcn.zip
-#           npm install --production
-#           zip -y -r fn.zip . 
+2. **deploy-lambdas**:
+   - Deploys the detected lambdas using a matrix strategy, allowing each lambda to be deployed independently.
+   - Runs the necessary setup and build steps for each lambda.
 
-#           # Deploy to Viax
-#           TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=${{ secrets.VIAX_USERNAME }}&password=${{ secrets.VIAX_PASSWORD }}" ${{ secrets.AUTH_URL }} | jq -r '.access_token')
-#           response=$(curl --request POST \
-#             --url "${{ secrets.API_URL }}" \
-#             --header "Authorization: Bearer $TOKEN" \
-#             --header 'Content-Type: multipart/form-data' \
-#             --form 'operations={ 
-#               "operationName": "upsertFunction",
-#               "query": "mutation upsertFunction($file: Upload!) { upsertFunction(input: { fun: $file }) { uid } }",
-#               "variables": { "file": null }
-#             }' \
-#             --form 'map={ "File":["variables.file"] }' \
-#             --form File=@./fcn.zip)
+3. **no-changes**:
+   - Executes when no changes are detected or if no lambda is specified during a manual trigger.
 
-#           if [[ $response == *"uid"* ]]; then
-#             echo "Successfully deployed Lambda function $lambda."
-#           else
-#             echo "Failed to deploy Lambda function $lambda."
-#             exit 1
-#           fi
-#         done
+## Usage
+
+### Automatic Deployment
+
+Whenever changes are pushed to the `dev` branch within the `lambdas` directory, the workflow will automatically detect the changes and deploy the affected lambdas.
+
+### Manual Deployment
+
+To manually trigger the workflow:
+
+1. Navigate to the **Actions** tab in your GitHub repository.
+2. Select the **Deploy Lambdas** workflow.
+3. Click on the **Run workflow** button.
+4. Optionally, provide the name of the lambda you wish to deploy. Use **"all"** to deploy all lambdas or leave the input blank to skip deployment.
+
+### Input Parameters
+
+- **lambda_name**: 
+  - Description: The name of the lambda to deploy.
+  - Type: `string`
+  - Required: `false`
+  - Use **"all"** to deploy all lambdas or specify a particular lambda name.
+
+## Workflow Steps
+
+### detect-changes Job
+
+- **Checkout Code**: Uses the `actions/checkout` action to fetch the repository code.
+- **Get Changed Files**: Checks for changes in the `lambdas` directory. If triggered manually, it checks the input for specific lambdas or lists all lambdas if "all" is specified.
+
+### deploy-lambdas Job
+
+- **Matrix Strategy**: Deploys each changed lambda independently.
+- **Setup Node.js**: Configures the Node.js environment.
+- **Pre-deploy Steps**: 
+  - Navigates to the specific lambda directory.
+  - Installs dependencies, builds the lambda, and prepares it for deployment.
+- **Deploy Lambda**: Contains the actual deployment logic (currently a placeholder).
+
+### no-changes Job
+
+- Executes when no changes are detected or no lambda is specified, logging a message that no deployment is needed.
+
+## Notes
+
+- Ensure that your AWS credentials and any necessary secrets are configured in your GitHub repository settings to allow for deployment.
+- Modify the deployment logic in the `Deploy lambda` step to include the actual deployment command for your specific setup.
+
+## Conclusion
+
+This workflow provides a flexible and efficient way to manage AWS Lambda deployments directly from your GitHub repository, ensuring that changes are deployed quickly and accurately.

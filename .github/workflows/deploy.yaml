@@ -1,4 +1,4 @@
-name: Deploy Lambdas to Viax
+name: Deploy Lambdas
 
 on:
   push:
@@ -69,7 +69,7 @@ jobs:
       
       - name: Deploy lambda
         run: |
-          echo "deployed"
+          echo "deployed"  #actual deploy code goes here.
 
   no-changes:
     needs: detect-changes
