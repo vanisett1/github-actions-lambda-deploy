@@ -6,6 +6,13 @@ on:
       - dev
     paths:
       - 'lambdas/**'
+      
+  workflow_dispatch:
+    inputs:
+      lambda_name:
+        description: 'Name of the lambda to deploy'
+        required: true
+        type: string
 
 jobs:
   detect-changes:
