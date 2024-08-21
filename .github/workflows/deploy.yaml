@@ -1,4 +1,4 @@
-name: Deploy Changed Lambdas
+name: Deploy Lambdas to Viax
 
 on:
   push:
