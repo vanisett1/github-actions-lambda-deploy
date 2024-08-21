@@ -21,6 +21,7 @@ jobs:
         id: changes
         run: |
           changed_lambdas=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          echo "Changed lambdas: $changed_lambdas"
           echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
 
   deploy-lambdas:
