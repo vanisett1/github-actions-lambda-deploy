@@ -3,7 +3,7 @@ name: Deploy Changed Lambdas
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
       - 'lambdas/**'
 
