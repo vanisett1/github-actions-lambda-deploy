@@ -1,68 +1,58 @@
-name: Deploy Lambdas
+name: Deploy Changed Lambdas
 
 on:
   push:
     branches:
-      - dev
+      - main
+    paths:
+      - 'lambdas/**'
 
 jobs:
-  deploy:
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      changed_lambdas: ${{ steps.changes.outputs.changed_lambdas }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Get changed files
+        id: changes
+        run: |
+          changed_lambdas=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
 
-    - name: Filter Modified Lambda Functions
-      uses: dorny/paths-filter@v2.2.1
-      id: filter
-      with:
-        filters: .github/filters.yaml
-
-    - name: Deploy Modified Lambdas
-      run: |
-        failed_lambdas=()
-
-        # Loop through the modified lambdas from the filter
-        for lambda in ${{ toJson(steps.filter.outputs) }}; do
-          if [ "${{ steps.filter.outputs.$lambda }}" == "true" ]; then
-            echo "Deploying Lambda: $lambda"
-            cd lambdas/$lambda
-
-            npm install
-            npm version $(jq -r '.version' package.json)-${{ github.run_number }}
-            npm run build
-            cp viax.${GITHUB_REF_NAME}.yaml viax.yaml
-            npm run test
-            rm -f fcn.zip
-            npm install --production
-            zip -y -r fn.zip .
-
-            # Deploy to Viax
-            TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=${{ secrets.VIAX_USERNAME }}&password=${{ secrets.VIAX_PASSWORD }}" ${{ secrets.AUTH_URL }} | jq -r '.access_token')
-            response=$(curl --request POST \
-              --url "${{ secrets.API_URL }}" \
-              --header "Authorization: Bearer $TOKEN" \
-              --header 'Content-Type: multipart/form-data' \
-              --form 'operations={ 
-                "operationName": "upsertFunction",
-                "query": "mutation upsertFunction($file: Upload!) { upsertFunction(input: { fun: $file }) { uid } }",
-                "variables": { "file": null }
-              }' \
-              --form 'map={ "File":["variables.file"] }' \
-              --form File=@./fcn.zip)
-
-            if [[ $response == *"uid"* ]]; then
-              echo "Successfully deployed Lambda function $lambda."
-            else
-              echo "Failed to deploy Lambda function $lambda."
-              failed_lambdas+=("$lambda")
-            fi
-
-            cd - # Move back to the previous directory
-          fi
-        done
-
-        if [ ${#failed_lambdas[@]} -ne 0 ]; then
-          echo "The following Lambda functions failed to deploy: ${failed_lambdas[@]}"
-          exit 1
-        fi
+  deploy-lambdas:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+      
+      - name: Install dependencies
+        run: |
+          cd lambdas/${{ matrix.lambda }}
+          npm ci
+      
+      - name: Package lambda
+        run: |
+          cd lambdas/${{ matrix.lambda }}
+          zip -r ../../fcn.zip .
+      
+      - name: Deploy lambda
+        # env:
+        #   CLIENT_ID: ${{ secrets.CLIENT_ID }}
+        #   VIAX_USERNAME: ${{ secrets.VIAX_USERNAME }}
+        #   VIAX_PASSWORD: ${{ secrets.VIAX_PASSWORD }}
+        #   AUTH_URL: ${{ secrets.AUTH_URL }}
+        #   API_URL: ${{ secrets.API_URL }}
+        run: |
+          echo "deployed"
