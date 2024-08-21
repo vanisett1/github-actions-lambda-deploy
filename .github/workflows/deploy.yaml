@@ -6,12 +6,11 @@ on:
       - dev
     paths:
       - 'lambdas/**'
-      
   workflow_dispatch:
     inputs:
       lambda_name:
-        description: 'Name of the lambda to deploy'
-        required: true
+        description: 'Name of the lambda to deploy (use "all" to deploy all lambdas)'
+        required: false
         type: string
 
 jobs:
@@ -27,13 +26,24 @@ jobs:
       - name: Get changed files
         id: changes
         run: |
-          changed_lambdas=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.lambda_name }}" = "all" ]; then
+              changed_lambdas=$(ls -d lambdas/* | cut -d'/' -f2 | jq -R -s -c 'split("\n")[:-1]')
+            elif [ -n "${{ github.event.inputs.lambda_name }}" ]; then
+              changed_lambdas='["${{ github.event.inputs.lambda_name }}"]'
+            else
+              changed_lambdas='[]'
+            fi
+          else
+            changed_lambdas=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          fi
           echo "Changed lambdas: $changed_lambdas"
           echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
 
   deploy-lambdas:
     needs: detect-changes
     runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
     strategy:
       matrix:
         lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
@@ -57,13 +67,14 @@ jobs:
           npm install --production
           zip -y -r fn.zip . 
       
-      
       - name: Deploy lambda
-        # env:
-        #   CLIENT_ID: ${{ secrets.CLIENT_ID }}
-        #   VIAX_USERNAME: ${{ secrets.VIAX_USERNAME }}
-        #   VIAX_PASSWORD: ${{ secrets.VIAX_PASSWORD }}
-        #   AUTH_URL: ${{ secrets.AUTH_URL }}
-        #   API_URL: ${{ secrets.API_URL }}
         run: |
           echo "deployed"
+
+  no-changes:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas == '[]' }}
+    steps:
+      - name: No changes detected
+        run: echo "No changes detected or no lambda specified. No deployment needed."
