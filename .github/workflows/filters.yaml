@@ -1,0 +1,6 @@
+#add new functions here in the list
+
+test-fn:
+  - 'lambdas/test-fn/**/*'
+test-fn-2:
+  - 'lambdas/test-fn-2/**/*'
