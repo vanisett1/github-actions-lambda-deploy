@@ -28,10 +28,12 @@ jobs:
         fi
 
         echo "Modified Lambda functions: $modified_lambdas"
-        echo "::set-output name=modified_lambdas::$modified_lambdas"
+        echo "::set-output name=modified_lambas::$modified_lambdas"
 
     - name: Deploy modified Lambdas
       run: |
+        failed_lambdas=()
+
         for lambda in ${{ steps.find_lambdas.outputs.modified_lambdas }}; do
           echo "Deploying Lambda: $lambda"
           cd lambdas/$lambda
@@ -43,7 +45,7 @@ jobs:
           npm run test
           rm -f fcn.zip
           npm install --production
-          zip -r fcn.zip package.json viax.yaml src node_modules
+          zip -y -r fn.zip .
 
           # Deploy to Viax
           TOKEN=$(curl -X POST -d "grant_type=password&client_id=$CLIENT_ID&username=${{ secrets.VIAX_USERNAME }}&password=${{ secrets.VIAX_PASSWORD }}" ${{ secrets.AUTH_URL }} | jq -r '.access_token')
@@ -63,6 +65,13 @@ jobs:
             echo "Successfully deployed Lambda function $lambda."
           else
             echo "Failed to deploy Lambda function $lambda."
-            exit 1
+            failed_lambdas+=("$lambda")
           fi
+
+          cd - # Move back to the previous directory
         done
+
+        if [ ${#failed_lambdas[@]} -ne 0 ]; then
+          echo "The following Lambda functions failed to deploy: ${failed_lambdas[@]}"
+          exit 1
+        fi
