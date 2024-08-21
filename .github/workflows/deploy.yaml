@@ -6,6 +6,7 @@ on:
       - dev
     paths:
       - 'lambdas/**'
+      
   workflow_dispatch:
     inputs:
       lambda_name:
