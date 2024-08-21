@@ -36,17 +36,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '14'
+          node-version: '20'
       
-      - name: Install dependencies
+      - name: Pre-deploy
         run: |
           cd lambdas/${{ matrix.lambda }}
-          npm ci
+          npm install
+          npm version $(jq -r '.version' package.json)-${{ github.run_number }}
+          npm run build
+          cp viax.${GITHUB_REF_NAME}.yaml viax.yaml
+          npm run test
+          rm -f fcn.zip
+          npm install --production
+          zip -y -r fn.zip . 
       
-      - name: Package lambda
-        run: |
-          cd lambdas/${{ matrix.lambda }}
-          zip -r ../../fcn.zip .
       
       - name: Deploy lambda
         # env:
