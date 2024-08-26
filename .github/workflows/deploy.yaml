@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+      
       - name: Get changed files
         id: changes
         run: |
@@ -41,78 +41,63 @@ jobs:
           echo "Changed lambdas: $changed_lambdas"
           echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
 
-  # Reusable job configuration
-.common-job-template:
-  runs-on: ubuntu-latest
-  if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
-  strategy:
-    matrix:
-      lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
-  steps:
-    - uses: actions/checkout@v4
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '16.19.1'
-
-  npm-install:
+  setup-environment:
     needs: detect-changes
-    uses: .common-job-template
+    runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
+    strategy:
+      matrix:
+        lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
     steps:
-
-      - name: Install dependencies
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Dependencies
         run: |
           cd lambdas/${{ matrix.lambda }}
-          echo "Installing dependencies for ${{ matrix.lambda }}..."
           npm install
 
-  npm-test:
-    needs: npm-install
-    uses: .common-job-template
+   test-lambda:
+    needs: build-lambda
+    runs-on: ubuntu-latest
     steps:
-
-      - name: Run tests
+      - name: Test Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
-          echo "Running tests for ${{ matrix.lambda }}..."
           npm run test
 
-  build:
-    needs: npm-test
-    uses: .common-job-template
+  build-lambda:
+    needs: setup-environment
+    runs-on: ubuntu-latest
     steps:
-      - name: Build the lambda
+      - name: Build Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
-          echo "Building ${{ matrix.lambda }}..."
           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
           npm run build
-          cp fnc.dev.yaml viax.yaml
 
-  zip:
-    needs: build
-    uses: .common-job-template
+  package-lambda:
+    needs: test-lambda
+    runs-on: ubuntu-latest
     steps:
-
-      - name: Zip the lambda package
+      - name: Package Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
-          echo "Zipping the package for ${{ matrix.lambda }}..."
           rm -f fcn.zip
           npm install --production
-          zip -r fcn.zip package.json viax.yaml src node_modules
+          zip -y -r fn.zip .
 
   deploy-lambda:
-    needs: zip
-    uses: .common-job-template
+    needs: package-lambda
+    runs-on: ubuntu-latest
     steps:
-
-      - name: Deploy lambda
+      - name: Deploy Lambda
         run: |
-          cd lambdas/${{ matrix.lambda }}
-          echo "Deploying ${{ matrix.lambda }}..."
-          # Replace the following line with your actual deployment command
-          echo "Lambda ${{ matrix.lambda }} deployed successfully."
+          echo "deployed"  #actual deploy code goes here.
 
   no-changes:
     needs: detect-changes
@@ -121,87 +106,3 @@ jobs:
     steps:
       - name: No changes detected
         run: echo "No changes detected or no lambda specified. No deployment needed."
-
-
-
-# name: Deploy Lambdas
-
-# on:
-#   push:
-#     branches:
-#       - dev
-#     paths:
-#       - 'lambdas/**'
-
-#   workflow_dispatch:
-#     inputs:
-#       lambda_name:
-#         description: 'Name of the lambda to deploy (use "all" to deploy all lambdas)'
-#         required: false
-#         type: string
-
-# jobs:
-#   detect-changes:
-#     runs-on: ubuntu-latest
-#     outputs:
-#       changed_lambdas: ${{ steps.changes.outputs.changed_lambdas }}
-#     steps:
-#       - uses: actions/checkout@v4
-#         with:
-#           fetch-depth: 0
-      
-#       - name: Get changed files
-#         id: changes
-#         run: |
-#           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-#             if [ "${{ github.event.inputs.lambda_name }}" = "all" ]; then
-#               changed_lambdas=$(ls -d lambdas/* | cut -d'/' -f2 | jq -R -s -c 'split("\n")[:-1]')
-#             elif [ -n "${{ github.event.inputs.lambda_name }}" ]; then
-#               changed_lambdas='["${{ github.event.inputs.lambda_name }}"]'
-#             else
-#               changed_lambdas='[]'
-#             fi
-#           else
-#             changed_lambdas=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
-#           fi
-#           echo "Changed lambdas: $changed_lambdas"
-#           echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
-
-#   deploy-lambdas:
-#     needs: detect-changes
-#     runs-on: ubuntu-latest
-#     if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
-#     strategy:
-#       matrix:
-#         lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
-#     steps:
-#       - uses: actions/checkout@v4
-      
-#       - name: Set up Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: '20'
-      
-#       - name: Pre-deploy
-#         run: |
-#           cd lambdas/${{ matrix.lambda }}
-#           npm install
-#           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
-#           npm run build
-#           cp fnc.${GITHUB_REF_NAME}.yaml fnc.yaml
-#           npm run test
-#           rm -f fcn.zip
-#           npm install --production
-#           zip -y -r fn.zip . 
-      
-#       - name: Deploy lambda
-#         run: |
-#           echo "deployed"  #actual deploy code goes here.
-
-#   no-changes:
-#     needs: detect-changes
-#     runs-on: ubuntu-latest
-#     if: ${{ needs.detect-changes.outputs.changed_lambdas == '[]' }}
-#     steps:
-#       - name: No changes detected
-#         run: echo "No changes detected or no lambda specified. No deployment needed."
