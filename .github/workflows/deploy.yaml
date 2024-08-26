@@ -61,8 +61,8 @@ jobs:
           cd lambdas/${{ matrix.lambda }}
           npm install
 
-   test-lambda:
-    needs: build-lambda
+  test-lambda:
+    needs: setup-environment
     runs-on: ubuntu-latest
     steps:
       - name: Test Lambda
@@ -70,8 +70,9 @@ jobs:
           cd lambdas/${{ matrix.lambda }}
           npm run test
 
+
   build-lambda:
-    needs: setup-environment
+    needs: test-lambda
     runs-on: ubuntu-latest
     steps:
       - name: Build Lambda
@@ -80,14 +81,15 @@ jobs:
           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
           npm run build
 
+
   package-lambda:
-    needs: test-lambda
+    needs: build-lambda
     runs-on: ubuntu-latest
     steps:
       - name: Package Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
-          rm -f fcn.zip
+          rm -f fn.zip
           npm install --production
           zip -y -r fn.zip .
 
