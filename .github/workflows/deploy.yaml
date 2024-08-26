@@ -136,11 +136,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '16.9.1'
-    steps:
       - name: Deploy Lambda
         run: |
           echo "deployed"  #actual deploy code goes here.
