@@ -41,7 +41,7 @@ jobs:
           echo "Changed lambdas: $changed_lambdas"
           echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
 
-  setup-environment:
+  npm-install:
     needs: detect-changes
     runs-on: ubuntu-latest
     if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
@@ -54,31 +54,49 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '16.9.1'
       
       - name: Install Dependencies
         run: |
           cd lambdas/${{ matrix.lambda }}
           npm install
 
-  test-lambda:
-    needs: [detect-changes, setup-environment]
+  npm-test:
+    needs: [detect-changes, npm-install]
     runs-on: ubuntu-latest
     if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
     strategy:
       matrix:
         lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
     steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16.9.1'
+
       - name: Test Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
           npm run test
 
 
-  build-lambda:
-    needs: test-lambda
+  npm-build:
+    needs: [detect-changes, npm-test]
     runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
+    strategy:
+      matrix:
+        lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
     steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16.9.1'
+
       - name: Build Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
@@ -87,9 +105,20 @@ jobs:
 
 
   package-lambda:
-    needs: build-lambda
+    needs: [detect-changes, npm-build]
     runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
+    strategy:
+      matrix:
+        lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
     steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16.9.1'
+
       - name: Package Lambda
         run: |
           cd lambdas/${{ matrix.lambda }}
@@ -98,8 +127,19 @@ jobs:
           zip -y -r fn.zip .
 
   deploy-lambda:
-    needs: package-lambda
+    needs: [detect-changes, package-lambda]
     runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
+    strategy:
+      matrix:
+        lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16.9.1'
     steps:
       - name: Deploy Lambda
         run: |
