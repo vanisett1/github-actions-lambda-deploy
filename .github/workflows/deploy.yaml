@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        lambda: ${{ fromJson(needs.setup-environment.outputs.changed_lambdas) }}
+        lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
     steps:
       - name: Test Lambda
         run: |
