@@ -65,7 +65,7 @@ jobs:
   npm-test:
     needs: npm-install
     runs-on: ubuntu-latest
-    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
+    # if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
     strategy:
       matrix:
         lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
