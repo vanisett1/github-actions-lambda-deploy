@@ -64,6 +64,7 @@ jobs:
   test-lambda:
     needs: setup-environment
     runs-on: ubuntu-latest
+    if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
     strategy:
       matrix:
         lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
