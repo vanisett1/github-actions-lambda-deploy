@@ -62,7 +62,7 @@ jobs:
           npm install
 
   test-lambda:
-    needs: setup-environment
+    needs: [detect-changes, setup-environment]
     runs-on: ubuntu-latest
     if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
     strategy:
