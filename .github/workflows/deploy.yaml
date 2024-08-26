@@ -74,7 +74,7 @@ jobs:
       - name: Prepare configuration
         run: |
           cd lambdas/${{ matrix.lambda }}
-          cp viax.dev.yaml viax.yaml
+          cp fnc.dev.yaml fnc.yaml
 
       - name: Run tests
         run: |
