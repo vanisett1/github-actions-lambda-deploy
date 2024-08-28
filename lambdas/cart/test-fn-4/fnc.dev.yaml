@@ -1,0 +1,4 @@
+function:
+  type: FUNCTION
+  name: your_function_name_here
+  runtime: Node20.x
