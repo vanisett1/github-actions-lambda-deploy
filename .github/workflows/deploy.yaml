@@ -27,22 +27,22 @@ jobs:
       - name: Get changed files
         id: changes
         run: |
-          # Function to extract unique top-level lambda directories
-          get_top_level_dirs() {
+          # Function to extract unique lambda directories
+          get_lambda_dirs() {
             local paths="$1"
-            echo "$paths" | awk -F/ '{OFS="/"; print $1,$2}' | sort -u | awk '!seen[$0]++'
+            echo "$paths" | awk -F/ '{OFS="/"; print $1,$2,$3}' | sort -u | awk '!seen[$0]++'
           }
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ github.event.inputs.lambda_name }}" = "all" ]; then
-              changed_lambdas=$(find lambdas -type d -mindepth 1 -maxdepth 3 | get_top_level_dirs | jq -R -s -c 'split("\n")[:-1]')
+              changed_lambdas=$(find lambdas -type d -mindepth 1 -maxdepth 3 | get_lambda_dirs | jq -R -s -c 'split("\n")[:-1]')
             elif [ -n "${{ github.event.inputs.lambda_name }}" ]; then
-              changed_lambdas=$(find lambdas -type d -name "${{ github.event.inputs.lambda_name }}" | get_top_level_dirs | jq -R -s -c 'split("\n")[:-1]')
+              changed_lambdas=$(find lambdas -type d -name "${{ github.event.inputs.lambda_name }}" | get_lambda_dirs | jq -R -s -c 'split("\n")[:-1]')
             else
               changed_lambdas='[]'
             fi
           else
-            changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | get_top_level_dirs)
+            changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | get_lambda_dirs)
             changed_lambdas=$(echo "$changed_files" | jq -R -s -c 'split("\n")[:-1]')
           fi
           echo "Changed lambdas: $changed_lambdas"
@@ -65,40 +65,40 @@ jobs:
 
       - name: npm Install
         run: |
-          cd lambdas/${{ matrix.lambda }}
+          cd ${{ matrix.lambda }}
           npm install
 
       - name: Bump version
         run: |
-          cd lambdas/${{ matrix.lambda }}
+          cd ${{ matrix.lambda }}
           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
 
       - name: npm build
         run: |
-          cd lambdas/${{ matrix.lambda }}
+          cd ${{ matrix.lambda }}
           npm run build
 
       - name: Prepare configuration
         run: |
-          cd lambdas/${{ matrix.lambda }}
+          cd ${{ matrix.lambda }}
           cp fnc.dev.yaml fnc.yaml
 
       - name: npm test
         run: |
-          cd lambdas/${{ matrix.lambda }}
+          cd ${{ matrix.lambda }}
           npm run test
 
       - name: Package lambda
         run: |
-          cd lambdas/${{ matrix.lambda }}
+          cd ${{ matrix.lambda }}
           rm -f fcn.zip
           npm install --production
           zip -r fcn.zip package.json fnc.yaml src node_modules
 
       - name: Deploy Lambda
         run: |
-          cd lambdas/${{ matrix.lambda }}
-          #deploy code
+          cd ${{ matrix.lambda }}
+          # deploy code
 
   no-changes:
     needs: detect-changes
