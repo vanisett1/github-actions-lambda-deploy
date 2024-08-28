@@ -30,7 +30,7 @@ jobs:
           # Function to extract unique top-level lambda directories
           get_top_level_dirs() {
             local paths="$1"
-            echo "$paths" | awk -F/ '{OFS="/"; print $1,$2}' | sort -u
+            echo "$paths" | awk -F/ '{OFS="/"; print $1,$2}' | sort -u | awk '!seen[$0]++'
           }
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -65,39 +65,39 @@ jobs:
 
       - name: npm Install
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm install
 
       - name: Bump version
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm version $(jq -r '.version' package.json)-${{ github.run_number }}
 
       - name: npm build
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm run build
 
       - name: Prepare configuration
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           cp fnc.dev.yaml fnc.yaml
 
       - name: npm test
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm run test
 
       - name: Package lambda
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           rm -f fcn.zip
           npm install --production
           zip -r fcn.zip package.json fnc.yaml src node_modules
 
       - name: Deploy Lambda
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           #deploy code
 
   no-changes:
