@@ -86,7 +86,7 @@ jobs:
       - name: Prepare configuration
         run: |
           cd lambdas/${{ matrix.lambda }}
-          cp viax.${{ needs.detect-changes.outputs.environment }}.yaml viax.yaml
+          cp fnc.${{ needs.detect-changes.outputs.environment }}.yaml fnc.yaml
 
       - name: npm test
         run: |
@@ -98,13 +98,13 @@ jobs:
           cd lambdas/${{ matrix.lambda }}
           rm -f fcn.zip
           npm install --production
-          zip -r fcn.zip package.json viax.yaml src node_modules
+          zip -r fcn.zip package.json fnc.yaml src node_modules
 
       - name: Deploy Lambda
         env:
           ENVIRONMENT: ${{ needs.detect-changes.outputs.environment }}
-          VIAX_USERNAME: ${{ secrets[format('VIAX_USERNAME_{0}', needs.detect-changes.outputs.environment)] }}
-          VIAX_PASSWORD: ${{ secrets[format('VIAX_PASSWORD_{0}', needs.detect-changes.outputs.environment)] }}
+          fnc_USERNAME: ${{ secrets[format('fnc_USERNAME_{0}', needs.detect-changes.outputs.environment)] }}
+          fnc_PASSWORD: ${{ secrets[format('fnc_PASSWORD_{0}', needs.detect-changes.outputs.environment)] }}
         
         run: |
           cd lambdas/${{ matrix.lambda }}
