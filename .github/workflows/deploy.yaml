@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - dev
+      - qa
     paths:
       - 'lambdas/**'
 
   workflow_dispatch:
     inputs:
       lambda_name:
-        description: 'Name of the lambda to deploy (use "all" to deploy all lambdas)'
+        description: 'Name of the lambda or path if it is nested, to deploy (use "all" to deploy all lambdas)'
         required: false
         type: string
 
@@ -19,32 +20,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed_lambdas: ${{ steps.changes.outputs.changed_lambdas }}
+      environment: ${{ steps.set-environment.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get changed files
+      - name: Set environment based on branch
+        id: set-environment
+        run: |
+          branch_name="${{ github.ref_name }}"
+          environment=$(echo $branch_name | awk -F'/' '{print $NF}')
+          echo "Environment: $environment"
+          echo "environment=$environment" >> $GITHUB_OUTPUT
+          
+      - name: Get changed lambdas
         id: changes
         run: |
-          # Function to extract unique lambda directories
-          get_lambda_dirs() {
-            local paths="$1"
-            echo "$paths" | awk -F/ '{OFS="/"; print $1,$2,$3}' | sort -u | awk '!seen[$0]++'
-          }
-
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ github.event.inputs.lambda_name }}" = "all" ]; then
-              changed_lambdas=$(find lambdas -type d -mindepth 1 -maxdepth 3 | get_lambda_dirs | jq -R -s -c 'split("\n")[:-1]')
+              changed_lambdas=$(find lambdas -mindepth 1 -maxdepth 2 -type d -exec bash -c '[ -f "$0/package.json" ]' {} \; -print | cut -d'/' -f2- | awk 'NF' | jq -R -s -c 'split("\n")[:-1]')
             elif [ -n "${{ github.event.inputs.lambda_name }}" ]; then
-              changed_lambdas=$(find lambdas -type d -name "${{ github.event.inputs.lambda_name }}" | get_lambda_dirs | jq -R -s -c 'split("\n")[:-1]')
+              changed_lambdas='["${{ github.event.inputs.lambda_name }}"]'
             else
               changed_lambdas='[]'
             fi
           else
-            changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | get_lambda_dirs)
-            changed_lambdas=$(echo "$changed_files" | jq -R -s -c 'split("\n")[:-1]')
+            changed_lambdas=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^lambdas/' | while read file; do dir=$(dirname "$file"); if [ -f "$dir/package.json" ]; then echo "${dir#lambdas/}"; fi; done | sort -u | jq -R -s -c 'split("\n")[:-1]')
           fi
+          
           echo "Changed lambdas: $changed_lambdas"
           echo "changed_lambdas=$changed_lambdas" >> $GITHUB_OUTPUT
 
@@ -53,6 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ needs.detect-changes.outputs.changed_lambdas != '[]' }}
     strategy:
+      fail-fast: false
       matrix:
         lambda: ${{ fromJson(needs.detect-changes.outputs.changed_lambdas) }}
     steps:
@@ -65,40 +70,48 @@ jobs:
 
       - name: npm Install
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm install
 
       - name: Bump version
         run: |
-          cd ${{ matrix.lambda }}
-          npm version $(jq -r '.version' package.json)-${{ github.run_number }}
+          cd lambdas/${{ matrix.lambda }}
+          npm version $(jq -r '.version' package.json)-${{ needs.detect-changes.outputs.environment }}-${{ github.run_number }}
 
       - name: npm build
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm run build
 
       - name: Prepare configuration
         run: |
-          cd ${{ matrix.lambda }}
-          cp fnc.dev.yaml fnc.yaml
+          cd lambdas/${{ matrix.lambda }}
+          cp viax.${{ needs.detect-changes.outputs.environment }}.yaml viax.yaml
 
       - name: npm test
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           npm run test
 
       - name: Package lambda
         run: |
-          cd ${{ matrix.lambda }}
+          cd lambdas/${{ matrix.lambda }}
           rm -f fcn.zip
           npm install --production
-          zip -r fcn.zip package.json fnc.yaml src node_modules
+          zip -r fcn.zip package.json viax.yaml src node_modules
 
       - name: Deploy Lambda
+        env:
+          ENVIRONMENT: ${{ needs.detect-changes.outputs.environment }}
+          VIAX_USERNAME: ${{ secrets[format('VIAX_USERNAME_{0}', needs.detect-changes.outputs.environment)] }}
+          VIAX_PASSWORD: ${{ secrets[format('VIAX_PASSWORD_{0}', needs.detect-changes.outputs.environment)] }}
+        
         run: |
-          cd ${{ matrix.lambda }}
-          # deploy code
+          cd lambdas/${{ matrix.lambda }}
+          # Source the .env file based on the environment
+          source ./.env.${{ needs.detect-changes.outputs.environment }}
+          # Run the push script
+          # ./push.sh
 
   no-changes:
     needs: detect-changes
@@ -107,3 +120,4 @@ jobs:
     steps:
       - name: No changes detected
         run: echo "No changes detected or no lambda specified. No deployment needed."
+
