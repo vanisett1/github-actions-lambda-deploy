@@ -7,6 +7,13 @@ on:
       - qa
     paths:
       - 'lambdas/**'
+      
+  pull_request:
+    branches:
+      - dev
+      - qa
+    paths:
+      - 'lambdas/**'
 
   workflow_dispatch:
     inputs:
@@ -86,7 +93,7 @@ jobs:
       - name: Prepare configuration
         run: |
           cd lambdas/${{ matrix.lambda }}
-          cp fnc.${{ needs.detect-changes.outputs.environment }}.yaml fnc.yaml
+          cp fun.${{ needs.detect-changes.outputs.environment }}.yaml fun.yaml
 
       - name: npm test
         run: |
@@ -98,20 +105,41 @@ jobs:
           cd lambdas/${{ matrix.lambda }}
           rm -f fcn.zip
           npm install --production
-          zip -r fcn.zip package.json fnc.yaml src node_modules
+          zip -r fcn.zip package.json fun.yaml src node_modules
 
       - name: Deploy Lambda
         env:
           ENVIRONMENT: ${{ needs.detect-changes.outputs.environment }}
-          fnc_USERNAME: ${{ secrets[format('fnc_USERNAME_{0}', needs.detect-changes.outputs.environment)] }}
-          fnc_PASSWORD: ${{ secrets[format('fnc_PASSWORD_{0}', needs.detect-changes.outputs.environment)] }}
+          fun_USERNAME: ${{ secrets[format('fun_USERNAME_{0}', needs.detect-changes.outputs.environment)] }}
+          fun_PASSWORD: ${{ secrets[format('fun_PASSWORD_{0}', needs.detect-changes.outputs.environment)] }}
+          USERNAME: ${{ secrets[format('fun_USERNAME_{0}', needs.detect-changes.outputs.environment)] }}
+          PASSWORD: ${{ secrets[format('fun_PASSWORD_{0}', needs.detect-changes.outputs.environment)] }}
         
         run: |
           cd lambdas/${{ matrix.lambda }}
           # Source the .env file based on the environment
           source ./.env.${{ needs.detect-changes.outputs.environment }}
-          # Run the push script
-          # ./push.sh
+          # Run the push script and capture the UID
+          PUSH_OUTPUT=$(./push.sh)
+          echo "$PUSH_OUTPUT"
+          # Check if the output contains an error field
+          if echo "$PUSH_OUTPUT" | jq -e '.error' > /dev/null; then
+            ERROR_MESSAGE=$(echo "$PUSH_OUTPUT" | jq -r '.error')
+            echo "Error: push.sh reported an error: $ERROR_MESSAGE"
+            exit 1
+          fi
+
+          # Use jq to extract the FUNCTION_UID from the JSON output
+          FUNCTION_UID=$(echo "$PUSH_OUTPUT" | jq -r '.data.upsertFunction.uid')
+          echo "lambda uid: $FUNCTION_UID"
+    
+          # Check if FUNCTION_UID is empty
+          if [ -z "$FUNCTION_UID" ]; then
+            echo "Error: Function UID not found in the output."
+            exit 1
+          fi
+          # Run the status script with only the FUNCTION_UID
+          ./status.sh "$FUNCTION_UID"
 
   no-changes:
     needs: detect-changes
@@ -120,4 +148,3 @@ jobs:
     steps:
       - name: No changes detected
         run: echo "No changes detected or no lambda specified. No deployment needed."
-
